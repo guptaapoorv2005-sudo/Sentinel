@@ -1,0 +1,50 @@
+# Sentinel — Docker Compose
+#
+# Starts the API server and Redis.
+# PostgreSQL is hosted on Neon (cloud), so it's not a local container.
+#
+# Usage:
+#   docker-compose up --build        # Build and start everything
+#   docker-compose up -d             # Start in background
+#   docker-compose down              # Stop everything
+#   docker-compose logs -f api       # Follow API logs
+
+services:
+  # --- Redis ---
+  # BullMQ backend, worker heartbeats, coordination.
+  # Data is persisted to a Docker volume so it survives container restarts.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # --- Sentinel API ---
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override REDIS_URL to use the Docker service name.
+      # Inside Docker's network, containers find each other by service name.
+      # "redis" resolves to the Redis container's IP automatically.
+      REDIS_URL: redis://redis:6379
+      LOG_FORMAT: json
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis-data:

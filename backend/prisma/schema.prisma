@@ -1,0 +1,17 @@
+// Prisma schema for Sentinel.
+// In Prisma 7, the connection URL is configured in prisma.config.js,
+// not here. This file defines only the generator and datasource provider.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Phase 0: No models yet.
+// Models will be added in Phase 1 (users, monitors).
+// The schema is intentionally empty — we only need to verify
+// that Prisma can connect to Neon PostgreSQL.
