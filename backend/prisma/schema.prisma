@@ -11,7 +11,63 @@ datasource db {
   provider = "postgresql"
 }
 
-// Phase 0: No models yet.
-// Models will be added in Phase 1 (users, monitors).
-// The schema is intentionally empty — we only need to verify
-// that Prisma can connect to Neon PostgreSQL.
+// ─── Phase 1: User & Monitor Models ─────────────────────────────────────────
+
+/// A Sentinel user who owns monitors.
+/// Passwords are stored as bcrypt hashes — never store plaintext passwords.
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // A user can own many monitors.
+  monitors Monitor[]
+
+  @@map("users")
+}
+
+/// HTTP method for a monitor check.
+enum HttpMethod {
+  GET
+  POST
+  PUT
+  PATCH
+  DELETE
+  HEAD
+  OPTIONS
+}
+
+/// A monitor defines a URL to check at a given interval.
+/// Monitors belong to a user and are the core domain object in Sentinel.
+///
+/// KEY DESIGN DECISIONS:
+///   - `interval` is in seconds, minimum 300 (5 minutes).
+///   - `expectedStatus` defaults to 200.
+///   - `enabled` lets users pause monitoring without deleting the monitor.
+///   - `method` defaults to GET (most common uptime check).
+///   - `timeout` is in milliseconds (how long to wait for a response).
+model Monitor {
+  id             String     @id @default(uuid()) @db.Uuid
+  userId         String     @map("user_id") @db.Uuid
+  name           String
+  url            String
+  method         HttpMethod @default(GET)
+  interval       Int        @default(300)  // seconds, min 300 (5 min)
+  timeout        Int        @default(10000) // ms, default 10s
+  expectedStatus Int        @default(200) @map("expected_status")
+  enabled        Boolean    @default(true)
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  // Foreign key to the user who owns this monitor.
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // INDEX JUSTIFICATION:
+  // - userId: Every monitor query filters by the authenticated user's ID.
+  //   Without this index, listing monitors would require a full table scan.
+  @@index([userId])
+
+  @@map("monitors")
+}
