@@ -17,6 +17,12 @@ import { defineConfig } from "prisma/config";
 export default defineConfig({
   earlyAccess: true,
   schema: path.join(import.meta.dirname, "prisma", "schema.prisma"),
+
+  // Required by `prisma migrate dev` to connect directly to PostgreSQL.
+  datasource: {
+    url: process.env.DATABASE_URL,
+  },
+
   migrate: {
     async resolveAdapter() {
       const { PrismaPg } = await import("@prisma/adapter-pg");
@@ -24,3 +30,4 @@ export default defineConfig({
     },
   },
 });
+
