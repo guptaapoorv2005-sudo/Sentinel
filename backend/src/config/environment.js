@@ -2,6 +2,8 @@ const requiredVars = [
   'PORT',
   'DATABASE_URL',
   'NODE_ENV',
+  'JWT_SECRET',
+  'REFRESH_TOKEN_SECRET',
 ];
 
 const optionalVars = {
@@ -28,6 +30,15 @@ function loadEnvironment() {
     corsOrigin: process.env.CORS_ORIGIN || optionalVars.CORS_ORIGIN,
     redisUrl: process.env.REDIS_URL || optionalVars.REDIS_URL,
     logFormat: process.env.LOG_FORMAT || (process.env.NODE_ENV === 'development' ? 'pretty' : 'json'),
+
+    // JWT authentication config
+    jwtSecret: process.env.JWT_SECRET,
+    jwtExpiresIn: '1d', // Access token expiry (1 day)
+    refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET,
+    refreshTokenExpiresIn: '7d', // Refresh token expiry (7 days)
+    accessTokenCookieName: 'sentinel_access_token',
+    refreshTokenCookieName: 'sentinel_refresh_token',
+    googleClientId: process.env.GOOGLE_CLIENT_ID, // Optional for now
   };
 }
 
