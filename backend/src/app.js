@@ -10,6 +10,8 @@ import { ApiError } from './utils/ApiError.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 import { prisma, testDatabaseConnection } from './config/database.js';
 import { testRedisConnection } from './config/redis.js';
+import authRoutes from './routes/auth.routes.js';
+import monitorRoutes from './routes/monitor.routes.js';
 
 const logger = createLogger('api');
 
@@ -79,10 +81,9 @@ app.get('/api/v1/ready', async (req, res) => {
   ));
 });
 
-// --- Import routes ---
-// (Routes will be added in Phase 1)
-
-// --- Use routes ---
+// --- Mount routes ---
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/monitors', monitorRoutes);
 
 app.use((req, _res, next) => {
   next(new ApiError(404, 'Route not found: ' + req.originalUrl));
