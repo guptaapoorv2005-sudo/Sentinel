@@ -64,7 +64,7 @@ model Monitor {
   name           String
   url            String
   method         HttpMethod @default(GET)
-  interval       Int        @default(300)  // seconds, min 300 (5 min)
+  interval       Int        @default(300)  // seconds, min 30 (30s)
   timeout        Int        @default(10000) // ms, default 10s
   expectedStatus Int        @default(200) @map("expected_status")
   enabled        Boolean    @default(true)

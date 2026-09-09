@@ -1,8 +1,8 @@
 // Zod validation schemas for monitor endpoints.
 //
 // DESIGN DECISIONS:
-// - `interval` minimum is 300 seconds (5 minutes), as agreed with the user.
-//   This prevents abuse and keeps the system load predictable.
+// - `interval` minimum is 30 seconds, matching the PRD's smallest supported interval.
+//   This balances useful monitoring frequency against system load.
 // - `url` must start with http:// or https:// — we only support HTTP checks.
 // - `expectedStatus` must be a valid HTTP status code (100-599).
 // - `timeout` minimum is 1000ms (1 second), max 30000ms (30 seconds).
@@ -34,7 +34,7 @@ const createMonitorSchema = z.object({
   interval: z
     .number({ invalid_type_error: 'Interval must be a number' })
     .int('Interval must be a whole number')
-    .min(300, 'Minimum interval is 300 seconds (5 minutes)')
+    .min(30, 'Minimum interval is 30 seconds')
     .max(86400, 'Maximum interval is 86400 seconds (24 hours)')
     .default(300),
 
