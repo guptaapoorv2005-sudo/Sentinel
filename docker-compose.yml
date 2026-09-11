@@ -46,5 +46,42 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # --- Sentinel Scheduler ---
+  # Separate process that polls for due monitors and enqueues BullMQ jobs.
+  # Uses the same codebase as the API but runs a different entry point.
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+      LOG_FORMAT: json
+    command: ["node", "-r", "dotenv/config", "src/scheduler/index.js"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Sentinel Worker ---
+  # Consumes BullMQ jobs, executes HTTP checks, persists CheckResult rows.
+  # Scale this service horizontally to increase check throughput.
+  # Phase 4 will introduce WORKER_ID and REGION env vars to distinguish instances.
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+      LOG_FORMAT: json
+    command: ["node", "-r", "dotenv/config", "src/worker/index.js"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   redis-data:
