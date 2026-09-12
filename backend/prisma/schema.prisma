@@ -11,10 +11,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─── Phase 1: User & Monitor Models ─────────────────────────────────────────
-
-/// A Sentinel user who owns monitors.
-/// Passwords are stored as bcrypt hashes — never store plaintext passwords.
 model User {
   id           String    @id @default(uuid()) @db.Uuid
   email        String    @unique
@@ -31,14 +27,12 @@ model User {
   @@map("users")
 }
 
-/// Authentication provider
 enum AuthProvider {
   LOCAL
   GOOGLE
 }
 
 
-/// HTTP method for a monitor check.
 enum HttpMethod {
   GET
   POST
@@ -49,15 +43,6 @@ enum HttpMethod {
   OPTIONS
 }
 
-/// A monitor defines a URL to check at a given interval.
-/// Monitors belong to a user and are the core domain object in Sentinel.
-///
-/// KEY DESIGN DECISIONS:
-///   - `interval` is in seconds, minimum 300 (5 minutes).
-///   - `expectedStatus` defaults to 200.
-///   - `enabled` lets users pause monitoring without deleting the monitor.
-///   - `method` defaults to GET (most common uptime check).
-///   - `timeout` is in milliseconds (how long to wait for a response).
 model Monitor {
   id             String     @id @default(uuid()) @db.Uuid
   userId         String     @map("user_id") @db.Uuid
@@ -71,8 +56,10 @@ model Monitor {
   createdAt      DateTime   @default(now()) @map("created_at")
   updatedAt      DateTime   @updatedAt @map("updated_at")
 
-  // Foreign key to the user who owns this monitor.
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // A monitor can have many check results.
+  checkResults CheckResult[]
 
   // INDEX JUSTIFICATION:
   // - userId: Every monitor query filters by the authenticated user's ID.
@@ -80,4 +67,47 @@ model Monitor {
   @@index([userId])
 
   @@map("monitors")
+}
+
+enum CheckStatus {
+  UP
+  DOWN
+}
+
+/// A single health-check observation produced by a worker.
+///
+/// KEY DESIGN DECISIONS:
+///   - `@@unique([monitorId, executionSlot])` is the idempotency key.
+///     If a job is processed twice (at-least-once delivery), the second
+///     upsert updates the existing row rather than inserting a duplicate.
+///   - `executionSlot` is BigInt because ms-precision Unix timestamps exceed
+///     PostgreSQL/Prisma's 32-bit Int range.
+///   - `statusCode`, `responseTimeMs`, and `failureType` are nullable —
+///     a timeout or DNS error produces no HTTP response.
+///   - Cascade delete: removing a monitor removes its check history.
+model CheckResult {
+  id             String      @id @default(uuid()) @db.Uuid
+  monitorId      String      @map("monitor_id") @db.Uuid
+  executionSlot  BigInt      @map("execution_slot")
+  jobId          String      @map("job_id")
+  workerId       String      @map("worker_id")
+  region         String      @default("default")
+  status         CheckStatus
+  statusCode     Int?        @map("status_code")
+  responseTimeMs Int?        @map("response_time_ms")
+  failureType    String?     @map("failure_type")
+  checkedAt      DateTime    @map("checked_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  // IDEMPOTENCY: one result per monitor per execution slot.
+  @@unique([monitorId, executionSlot], name: "uq_check_result_slot")
+
+  // INDEX JUSTIFICATION:
+  // - (monitorId, checkedAt): The most common query pattern — recent results
+  //   for a given monitor. Used by the dashboard and incident detector.
+  @@index([monitorId, checkedAt])
+
+  @@map("check_results")
 }
