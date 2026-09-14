@@ -64,11 +64,14 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # --- Sentinel Worker ---
-  # Consumes BullMQ jobs, executes HTTP checks, persists CheckResult rows.
-  # Scale this service horizontally to increase check throughput.
-  # Phase 4 will introduce WORKER_ID and REGION env vars to distinguish instances.
-  worker:
+  # --- Sentinel Workers (Phase 4) ---
+  # Three worker instances with logical regions.
+  # They physically run on the same machine but each has a distinct identity.
+  # BullMQ distributes jobs across all connected workers automatically.
+  #
+  # Scale further with: docker compose up --scale worker-mumbai=2
+
+  worker-mumbai:
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -77,6 +80,45 @@ services:
     environment:
       REDIS_URL: redis://redis:6379
       LOG_FORMAT: json
+      WORKER_ID: worker-mumbai-1
+      WORKER_REGION: mumbai
+      WORKER_CONCURRENCY: 5
+    command: ["node", "-r", "dotenv/config", "src/worker/index.js"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker-singapore:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+      LOG_FORMAT: json
+      WORKER_ID: worker-singapore-1
+      WORKER_REGION: singapore
+      WORKER_CONCURRENCY: 5
+    command: ["node", "-r", "dotenv/config", "src/worker/index.js"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker-frankfurt:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+      LOG_FORMAT: json
+      WORKER_ID: worker-frankfurt-1
+      WORKER_REGION: frankfurt
+      WORKER_CONCURRENCY: 5
     command: ["node", "-r", "dotenv/config", "src/worker/index.js"]
     depends_on:
       redis:
