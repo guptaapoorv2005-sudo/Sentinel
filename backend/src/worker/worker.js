@@ -1,14 +1,19 @@
-// BullMQ Worker — consumes check jobs and persists results.
+// BullMQ Worker — executes health checks and publishes results.
+//
+// PHASE 6 CHANGE: Workers are now fully stateless — no database connection.
+//   After executeCheck(), the result is published to the result queue.
+//   The result processor (src/result-processor/) owns all persistence and
+//   monitor state decisions.
 //
 // JOB HANDLING CONTRACT:
 //   - A job represents one scheduled health-check execution.
 //   - The handler calls executeCheck(), which NEVER throws.
 //   - All check-level failures (timeout, DNS, wrong status) are classified
-//     and persisted as DOWN results. The job then succeeds from BullMQ's
+//     and published as DOWN results. The job succeeds from BullMQ's
 //     perspective (acknowledged, not retried).
-//   - Only unexpected worker errors (DB failure, uncaught exception) propagate
-//     as thrown errors. BullMQ retries those according to the queue's retry
-//     policy (3 attempts, exponential backoff).
+//   - Only unexpected worker errors (queue failure, uncaught exception)
+//     propagate as thrown errors. BullMQ retries those (3 attempts,
+//     exponential backoff).
 //
 // WHY THIS DISTINCTION MATTERS:
 //   A timeout is a valid health observation — "the service did not respond
@@ -17,9 +22,11 @@
 //   hiding the real failure reason and wasting queue resources.
 //
 // IDEMPOTENCY:
-//   Results are persisted with upsert keyed on (monitorId, executionSlot).
-//   If a job is processed twice (at-least-once delivery), the second write
-//   updates the existing row rather than creating a duplicate.
+//   The result job is enqueued with a deterministic ID:
+//     result_<monitorId>_<executionSlot>
+//   BullMQ deduplicates jobs with the same ID, so if this worker processes
+//   a stalled-and-recovered job, the result is only enqueued once.
+//   The result processor additionally upserts on (monitorId, executionSlot).
 //
 // WORKER IDENTITY:
 //   Each worker instance has:
@@ -28,13 +35,10 @@
 //     - concurrency: Parallel job capacity (env WORKER_CONCURRENCY, defaults to 5)
 //
 //   Multiple workers can run simultaneously. BullMQ distributes jobs across
-//   them automatically — no static assignment needed. Each persisted
-//   CheckResult records which worker+region produced it, enabling
-//   multi-region quorum analysis in later phases.
+//   them automatically — no static assignment needed.
 
 import { Worker } from 'bullmq';
-import { prisma } from '../config/database.js';
-import { redisConnection } from '../config/queue.js';
+import { redisConnection, resultQueue } from '../config/queue.js';
 import { executeCheck } from './checker.js';
 import { createLogger } from '../utils/logger.js';
 import { config } from '../config/environment.js';
@@ -74,47 +78,30 @@ function createJobHandler(workerId, region) {
       'Check complete'
     );
 
-    // --- Step 2: Persist the result ---
-    // Upsert keyed on (monitorId, executionSlot) for idempotency.
-    // If this job was already processed (e.g., BullMQ retry after a transient
-    // DB blip), the upsert updates rather than duplicates.
-    //
-    // NOTE: BigInt serialization — executionSlot arrives as a number in the
-    // job payload (JSON), but Prisma expects BigInt for the schema field.
-    await prisma.checkResult.upsert({
-      where: {
-        uq_check_result_slot: {
-          monitorId,
-          executionSlot: BigInt(executionSlot),
-        },
-      },
-      update: {
+    // --- Step 2: Publish result to the result queue ---
+    // The result processor owns all persistence and state decisions.
+    // Job ID is deterministic to deduplicate at the queue level: if this
+    // job was stalled and recovered, the same result ID won't be enqueued twice.
+    const resultJobId = `result_${monitorId}_${executionSlot}`;
+    await resultQueue.add(
+      'result',
+      {
         jobId: job.id,
-        workerId,
-        region,
-        status: checkResult.status,
-        statusCode: checkResult.statusCode,
-        responseTimeMs: checkResult.responseTimeMs,
-        failureType: checkResult.failureType,
-        checkedAt: new Date(),
-      },
-      create: {
         monitorId,
-        executionSlot: BigInt(executionSlot),
-        jobId: job.id,
+        executionSlot, // number (JSON-safe); processor converts to BigInt
         workerId,
         region,
         status: checkResult.status,
         statusCode: checkResult.statusCode,
         responseTimeMs: checkResult.responseTimeMs,
         failureType: checkResult.failureType,
-        checkedAt: new Date(),
+        checkedAt: new Date().toISOString(),
       },
-    });
+      { jobId: resultJobId }
+    );
 
-    logger.debug({ jobId: job.id, monitorId, workerId }, 'Check result persisted');
+    logger.debug({ jobId: job.id, monitorId, resultJobId, workerId }, 'Result enqueued');
 
-    // Return value is stored as the job's return data in BullMQ.
     return {
       status: checkResult.status,
       statusCode: checkResult.statusCode,
@@ -142,10 +129,6 @@ function createWorker(overrides = {}) {
     {
       connection: redisConnection,
       concurrency,
-      // stalledInterval: How often BullMQ checks for stalled jobs (ms).
-      //   A job is "stalled" when its worker disappears without acknowledging it.
-      // maxStalledCount: How many times a job can be detected as stalled before
-      //   it's moved to "failed". Set to 2 to allow one recovery attempt.
       stalledInterval: config.stalledIntervalMs,
       maxStalledCount: config.maxStalledCount,
     }
