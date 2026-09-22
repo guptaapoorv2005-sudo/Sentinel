@@ -59,7 +59,35 @@ const checkQueue = new Queue(config.checkQueueName, {
 });
 
 checkQueue.on('error', (err) => {
-  logger.error({ err: err.message }, 'BullMQ queue error');
+  logger.error({ err: err.message }, 'BullMQ check queue error');
 });
 
-export { checkQueue, redisConnection };
+// Result queue: carries normalized check results from workers to the result processor.
+//
+// WHY A SEPARATE QUEUE:
+//   Workers are stateless — they execute checks and publish results.
+//   The result processor owns persistence and state decisions.
+//   Decoupling via queue lets each side scale and restart independently.
+//
+// RETRY POLICY:
+//   Result jobs should retry on processor failure (DB down, transient error).
+//   The processor is idempotent (upsert on monitorId+executionSlot), so
+//   retrying is always safe.
+const resultQueue = new Queue(config.resultQueueName, {
+  connection: redisConnection,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff: {
+      type: 'exponential',
+      delay: 2000,
+    },
+    removeOnComplete: { age: 3600 },
+    removeOnFail: { age: 86400 },
+  },
+});
+
+resultQueue.on('error', (err) => {
+  logger.error({ err: err.message }, 'BullMQ result queue error');
+});
+
+export { checkQueue, resultQueue, redisConnection };
