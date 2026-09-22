@@ -12,14 +12,14 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(uuid()) @db.Uuid
-  email        String    @unique
-  passwordHash String?    @map("password_hash")
-  googleId     String?    @unique @map("google_id")
+  id           String       @id @default(uuid()) @db.Uuid
+  email        String       @unique
+  passwordHash String?      @map("password_hash")
+  googleId     String?      @unique @map("google_id")
   authProvider AuthProvider @default(LOCAL) @map("auth_provider")
-  refreshToken String?    @map("refresh_token")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  refreshToken String?      @map("refresh_token")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
 
   // A user can own many monitors.
   monitors Monitor[]
@@ -31,7 +31,6 @@ enum AuthProvider {
   LOCAL
   GOOGLE
 }
-
 
 enum HttpMethod {
   GET
@@ -49,12 +48,27 @@ model Monitor {
   name           String
   url            String
   method         HttpMethod @default(GET)
-  interval       Int        @default(300)  // seconds, min 30 (30s)
+  interval       Int        @default(300) // seconds, min 30 (30s)
   timeout        Int        @default(10000) // ms, default 10s
   expectedStatus Int        @default(200) @map("expected_status")
   enabled        Boolean    @default(true)
   createdAt      DateTime   @default(now()) @map("created_at")
   updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  // Current state - denormalized for fast dashboard reads.
+  // These are updated by the result processor, keyed on executionSlot
+  // ordering to prevent late-arriving results from corrupting state.
+  //
+  // lastEvaluatedSlot: the executionSlot of the last result that was used
+  //   to update this monitor's current state. Stored as BigInt to match
+  //   CheckResult.executionSlot. If an incoming result's executionSlot is
+  //   <= lastEvaluatedSlot it is a late-arrival; it is persisted as a
+  //   CheckResult row but does NOT update current state.
+  currentStatus       MonitorStatus @default(UNKNOWN) @map("current_status")
+  lastCheckedAt       DateTime?     @map("last_checked_at")
+  lastStatusChange    DateTime?     @map("last_status_change")
+  consecutiveFailures Int           @default(0) @map("consecutive_failures")
+  lastEvaluatedSlot   BigInt?       @map("last_evaluated_slot")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -65,8 +79,13 @@ model Monitor {
   // - userId: Every monitor query filters by the authenticated user's ID.
   //   Without this index, listing monitors would require a full table scan.
   @@index([userId])
-
   @@map("monitors")
+}
+
+enum MonitorStatus {
+  UP
+  DOWN
+  UNKNOWN
 }
 
 enum CheckStatus {
@@ -103,11 +122,9 @@ model CheckResult {
 
   // IDEMPOTENCY: one result per monitor per execution slot.
   @@unique([monitorId, executionSlot], name: "uq_check_result_slot")
-
   // INDEX JUSTIFICATION:
   // - (monitorId, checkedAt): The most common query pattern — recent results
   //   for a given monitor. Used by the dashboard and incident detector.
   @@index([monitorId, checkedAt])
-
   @@map("check_results")
 }
