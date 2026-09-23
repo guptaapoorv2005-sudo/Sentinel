@@ -12,6 +12,7 @@ import { prisma, testDatabaseConnection } from './config/database.js';
 import { testRedisConnection } from './config/redis.js';
 import authRoutes from './routes/auth.routes.js';
 import monitorRoutes from './routes/monitor.routes.js';
+import workerRoutes from './routes/worker.routes.js';
 
 const logger = createLogger('api');
 
@@ -84,6 +85,7 @@ app.get('/api/v1/ready', async (req, res) => {
 // --- Mount routes ---
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/monitors', monitorRoutes);
+app.use('/api/v1/workers', workerRoutes);
 
 app.use((req, _res, next) => {
   next(new ApiError(404, 'Route not found: ' + req.originalUrl));
