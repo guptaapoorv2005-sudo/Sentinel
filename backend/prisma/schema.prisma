@@ -75,6 +75,10 @@ model Monitor {
   // A monitor can have many check results.
   checkResults CheckResult[]
 
+  // A monitor can have many incidents (at most one open at a time,
+  // enforced by a partial unique index in the migration SQL).
+  incidents Incident[]
+
   // INDEX JUSTIFICATION:
   // - userId: Every monitor query filters by the authenticated user's ID.
   //   Without this index, listing monitors would require a full table scan.
@@ -127,4 +131,73 @@ model CheckResult {
   //   for a given monitor. Used by the dashboard and incident detector.
   @@index([monitorId, checkedAt])
   @@map("check_results")
+}
+
+// ── Incident State Machine (Phase 7) ─────────────────────────────────────────
+//
+// An Incident represents a confirmed failure event for a monitor.
+//
+// State transitions:
+//   DETECTED   → CONFIRMED    (auto-promoted immediately in Phase 7; Phase 8 adds quorum)
+//   DETECTED   → ACKNOWLEDGED (user-driven)
+//   CONFIRMED  → ACKNOWLEDGED (user-driven)
+//   DETECTED/CONFIRMED/ACKNOWLEDGED → RESOLVED (1 successful check, consecutiveFailures = 0)
+//
+// At most one non-RESOLVED incident per monitor at any time, enforced by a
+// partial unique index created in the migration SQL:
+//   CREATE UNIQUE INDEX uq_monitor_open_incident
+//     ON incidents (monitor_id)
+//     WHERE status != 'RESOLVED';
+//
+// This index is the primary idempotency guard against duplicate incident creation
+// under concurrent processing — no application-level check-then-insert race.
+
+enum IncidentStatus {
+  DETECTED
+  CONFIRMED
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model Incident {
+  id                     String         @id @default(uuid()) @db.Uuid
+  monitorId              String         @map("monitor_id") @db.Uuid
+  status                 IncidentStatus @default(DETECTED)
+  failureCountAtDetection Int           @map("failure_count_at_detection")
+  detectedAt             DateTime       @map("detected_at")
+  confirmedAt            DateTime?      @map("confirmed_at")
+  acknowledgedAt         DateTime?      @map("acknowledged_at")
+  resolvedAt             DateTime?      @map("resolved_at")
+  createdAt              DateTime       @default(now()) @map("created_at")
+  updatedAt              DateTime       @updatedAt @map("updated_at")
+
+  monitor Monitor         @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  events  IncidentEvent[]
+
+  // INDEX JUSTIFICATION:
+  // - (monitorId, status): The most common query — "does this monitor have an open incident?"
+  // - (monitorId, detectedAt DESC): Listing incidents for a monitor, newest first.
+  @@index([monitorId, status])
+  @@index([monitorId, detectedAt])
+  @@map("incidents")
+}
+
+/// An immutable audit event recording every state transition in an Incident's lifecycle.
+///
+/// fromStatus is nullable — the initial DETECTED event has no prior state.
+model IncidentEvent {
+  id         String          @id @default(uuid()) @db.Uuid
+  incidentId String          @map("incident_id") @db.Uuid
+  fromStatus IncidentStatus? @map("from_status")
+  toStatus   IncidentStatus  @map("to_status")
+  // Human-readable reason for the transition (e.g. 'threshold_reached', 'recovery', 'user_ack').
+  reason     String
+  // 'system' for automated transitions; userId for user-driven (ACKNOWLEDGED).
+  actor      String          @default("system")
+  createdAt  DateTime        @default(now()) @map("created_at")
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId])
+  @@map("incident_events")
 }
