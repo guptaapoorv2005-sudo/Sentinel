@@ -79,6 +79,9 @@ model Monitor {
   // enforced by a partial unique index in the migration SQL).
   incidents Incident[]
 
+  // Quorum-aggregated per-slot global statuses (Phase 8).
+  slotResults SlotResult[]
+
   // INDEX JUSTIFICATION:
   // - userId: Every monitor query filters by the authenticated user's ID.
   //   Without this index, listing monitors would require a full table scan.
@@ -97,12 +100,12 @@ enum CheckStatus {
   DOWN
 }
 
-/// A single health-check observation produced by a worker.
+/// A single health-check observation produced by one worker in one region.
 ///
 /// KEY DESIGN DECISIONS:
-///   - `@@unique([monitorId, executionSlot])` is the idempotency key.
-///     If a job is processed twice (at-least-once delivery), the second
-///     upsert updates the existing row rather than inserting a duplicate.
+///   - `@@unique([monitorId, executionSlot, region])` is the idempotency key.
+///     Each region contributes exactly one observation per slot. If a job is
+///     processed twice, the second upsert updates the existing row.
 ///   - `executionSlot` is BigInt because ms-precision Unix timestamps exceed
 ///     PostgreSQL/Prisma's 32-bit Int range.
 ///   - `statusCode`, `responseTimeMs`, and `failureType` are nullable —
@@ -124,24 +127,64 @@ model CheckResult {
 
   monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
 
-  // IDEMPOTENCY: one result per monitor per execution slot.
-  @@unique([monitorId, executionSlot], name: "uq_check_result_slot")
+  // IDEMPOTENCY: one result per monitor per execution slot per region.
+  // Phase 8: region added to the key; multiple workers can contribute to the
+  // same slot without overwriting each other's observation.
+  @@unique([monitorId, executionSlot, region], name: "uq_check_result_slot_region")
   // INDEX JUSTIFICATION:
-  // - (monitorId, checkedAt): The most common query pattern — recent results
-  //   for a given monitor. Used by the dashboard and incident detector.
+  // - (monitorId, executionSlot): quorum aggregator queries all regional
+  //   results for a given (monitor, slot).
+  // - (monitorId, checkedAt): recent results for the dashboard.
+  @@index([monitorId, executionSlot])
   @@index([monitorId, checkedAt])
   @@map("check_results")
 }
 
-// ── Incident State Machine (Phase 7) ─────────────────────────────────────────
+/// Quorum-aggregated global status for one (monitor, execution slot).
+///
+/// Produced by the result processor after applying M-of-N quorum to the
+/// regional CheckResults. One row per (monitorId, executionSlot).
+///
+/// globalStatus:
+///   UP      — ≥ quorumMinRegions reported UP
+///   DOWN    — ≥ quorumMinRegions reported DOWN
+///   UNKNOWN — window expired without enough reports to decide either way
+///
+/// consecutiveFailures on Monitor is derived from SlotResult history,
+/// not from individual CheckResults. UNKNOWN slots are transparent —
+/// they do not break or extend a DOWN streak.
+model SlotResult {
+  id             String        @id @default(uuid()) @db.Uuid
+  monitorId      String        @map("monitor_id") @db.Uuid
+  executionSlot  BigInt        @map("execution_slot")
+  globalStatus   MonitorStatus @map("global_status")  // UP | DOWN | UNKNOWN
+  regionsUp      Int           @map("regions_up")
+  regionsDown    Int           @map("regions_down")
+  regionsMissing Int           @map("regions_missing")
+  evaluatedAt    DateTime      @map("evaluated_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  // IDEMPOTENCY: exactly one aggregated result per (monitor, slot).
+  @@unique([monitorId, executionSlot], name: "uq_slot_result")
+  // INDEX JUSTIFICATION:
+  // - (monitorId, executionSlot DESC): consecutive-failures window query.
+  @@index([monitorId, executionSlot])
+  @@map("slot_results")
+}
+
+// ── Incident State Machine (Phase 7 / Phase 8) ───────────────────────────────
 //
 // An Incident represents a confirmed failure event for a monitor.
 //
-// State transitions:
-//   DETECTED   → CONFIRMED    (auto-promoted immediately in Phase 7; Phase 8 adds quorum)
-//   DETECTED   → ACKNOWLEDGED (user-driven)
-//   CONFIRMED  → ACKNOWLEDGED (user-driven)
-//   DETECTED/CONFIRMED/ACKNOWLEDGED → RESOLVED (1 successful check, consecutiveFailures = 0)
+// State transitions (Phase 8+):
+//   null         → CONFIRMED    (created directly; quorum already applied)
+//   CONFIRMED    → ACKNOWLEDGED (user-driven)
+//   CONFIRMED/ACKNOWLEDGED → RESOLVED (consecutiveFailures drops to 0 after UP slot)
+//
+// DETECTED is kept in the enum for schema backward compatibility but is no
+// longer written by the Phase 8 processor.
 //
 // At most one non-RESOLVED incident per monitor at any time, enforced by a
 // partial unique index created in the migration SQL:
