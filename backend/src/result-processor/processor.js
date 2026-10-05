@@ -185,8 +185,9 @@ async function evaluateSlotQuorum(tx, monitorId, slot, now) {
 //
 // Called inside a transaction after monitor state is updated.
 // Phase 8: incidents are created directly as CONFIRMED (no DETECTED transition).
+// Phase 9: OutboxEvent is written atomically inside the same transaction.
 //
-async function evaluateIncident(tx, monitorId, globalStatus, consecutiveFailures, evaluatedAt) {
+async function evaluateIncident(tx, monitorId, globalStatus, consecutiveFailures, evaluatedAt, monitorName, monitorUrl) {
   const openIncident = await tx.incident.findFirst({
     where: { monitorId, status: { not: 'RESOLVED' } },
     orderBy: { detectedAt: 'desc' },
@@ -230,6 +231,23 @@ async function evaluateIncident(tx, monitorId, globalStatus, consecutiveFailures
         },
       });
 
+      // Phase 9: write OutboxEvent atomically — same commit as the incident.
+      await tx.outboxEvent.create({
+        data: {
+          type: 'INCIDENT_CONFIRMED',
+          aggregateType: 'Incident',
+          aggregateId: incident.id,
+          payload: {
+            incidentId: incident.id,
+            monitorId,
+            monitorName: monitorName || monitorId,
+            monitorUrl: monitorUrl || '',
+            consecutiveFailures,
+            detectedAt: evaluatedAt.toISOString(),
+          },
+        },
+      });
+
       logger.info(
         { monitorId, incidentId: incident.id, consecutiveFailures },
         'Incident CONFIRMED (quorum threshold reached)'
@@ -257,6 +275,28 @@ async function evaluateIncident(tx, monitorId, globalStatus, consecutiveFailures
         toStatus: 'RESOLVED',
         reason: 'recovery (global UP slot, consecutiveFailures = 0)',
         actor: 'system',
+      },
+    });
+
+    // Phase 9: write OutboxEvent atomically — same commit as the resolution.
+    const resolvedAt = evaluatedAt;
+    const durationMs = openIncident.detectedAt
+      ? resolvedAt.getTime() - new Date(openIncident.detectedAt).getTime()
+      : null;
+
+    await tx.outboxEvent.create({
+      data: {
+        type: 'INCIDENT_RESOLVED',
+        aggregateType: 'Incident',
+        aggregateId: openIncident.id,
+        payload: {
+          incidentId: openIncident.id,
+          monitorId,
+          monitorName: monitorName || monitorId,
+          monitorUrl: monitorUrl || '',
+          resolvedAt: resolvedAt.toISOString(),
+          durationMs,
+        },
       },
     });
 
@@ -308,7 +348,7 @@ async function finalizeSlot(monitorId, slot, globalStatus, counts, now) {
     // 2. Read current monitor state.
     const monitor = await tx.monitor.findUnique({
       where: { id: monitorId },
-      select: { currentStatus: true, lastEvaluatedSlot: true, lastStatusChange: true },
+      select: { currentStatus: true, lastEvaluatedSlot: true, lastStatusChange: true, name: true, url: true },
     });
 
     if (!monitor) {
@@ -353,7 +393,10 @@ async function finalizeSlot(monitorId, slot, globalStatus, counts, now) {
     // 6. Evaluate incident (only for new non-UNKNOWN slots).
     let incidentOutcome = { action: 'noop' };
     if (isNew && globalStatus !== 'UNKNOWN') {
-      incidentOutcome = await evaluateIncident(tx, monitorId, globalStatus, consecutiveFailures, evaluatedAt);
+      incidentOutcome = await evaluateIncident(
+        tx, monitorId, globalStatus, consecutiveFailures, evaluatedAt,
+        monitor.name, monitor.url
+      );
     }
 
     logger.info(
