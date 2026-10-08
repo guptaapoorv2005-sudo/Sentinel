@@ -82,6 +82,9 @@ model Monitor {
   // Quorum-aggregated per-slot global statuses (Phase 8).
   slotResults SlotResult[]
 
+  // Alert notification channels configured for this monitor (Phase 9).
+  alertChannels AlertChannel[]
+
   // INDEX JUSTIFICATION:
   // - userId: Every monitor query filters by the authenticated user's ID.
   //   Without this index, listing monitors would require a full table scan.
@@ -243,4 +246,108 @@ model IncidentEvent {
 
   @@index([incidentId])
   @@map("incident_events")
+}
+
+// ── Phase 9: Transactional Outbox ────────────────────────────────────────────
+//
+// OutboxEvent is written atomically inside the same Prisma $transaction that
+// creates or transitions an Incident. This guarantees that an event is never
+// lost — if the incident commits, the outbox row commits. The alert dispatcher
+// process polls this table and fans out to configured AlertChannels.
+//
+// Lifecycle: PENDING → PROCESSING → DELIVERED
+//                           │
+//                           └──→ FAILED (after max retries)
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  DELIVERED
+  FAILED
+}
+
+model OutboxEvent {
+  id            String       @id @default(uuid()) @db.Uuid
+  type          String                              // e.g. 'INCIDENT_CONFIRMED'
+  aggregateType String       @map("aggregate_type") // e.g. 'Incident'
+  aggregateId   String       @map("aggregate_id") @db.Uuid
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  maxAttempts   Int          @default(5) @map("max_attempts")
+  lastError     String?      @map("last_error")
+  nextRetryAt   DateTime?    @map("next_retry_at")
+  processedAt   DateTime?    @map("processed_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  alerts Alert[]
+
+  // INDEX JUSTIFICATION:
+  // - (status, nextRetryAt): dispatcher poll query — "give me PENDING or
+  //   PROCESSING events that are due for processing/retry."
+  @@index([status, nextRetryAt])
+  @@map("outbox_events")
+}
+
+// ── Phase 9: Alert Channels ───────────────────────────────────────────────────
+//
+// Each monitor can have one channel per type (email, webhook).
+// Config is stored as JSON and validated at the application layer.
+//
+// EMAIL config shape:   { to: string }
+// WEBHOOK config shape: { url: string, secret?: string }
+
+enum AlertChannelType {
+  EMAIL
+  WEBHOOK
+}
+
+model AlertChannel {
+  id        String          @id @default(uuid()) @db.Uuid
+  monitorId String          @map("monitor_id") @db.Uuid
+  type      AlertChannelType
+  config    Json
+  enabled   Boolean         @default(true)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  alerts  Alert[]
+
+  // At most one channel per type per monitor.
+  @@unique([monitorId, type], name: "uq_monitor_channel_type")
+  @@map("alert_channels")
+}
+
+// ── Phase 9: Alerts ───────────────────────────────────────────────────────────
+//
+// One Alert row per (outboxEvent, channel) delivery attempt.
+// Idempotency key: uq_alert_channel ensures re-processing is a no-op.
+//
+// AlertStatus lifecycle: PENDING → DELIVERED
+//                               └──→ FAILED
+
+enum AlertStatus {
+  PENDING
+  DELIVERED
+  FAILED
+}
+
+model Alert {
+  id            String      @id @default(uuid()) @db.Uuid
+  outboxEventId String      @map("outbox_event_id") @db.Uuid
+  channelId     String      @map("channel_id") @db.Uuid
+  status        AlertStatus @default(PENDING)
+  attempts      Int         @default(0)
+  lastError     String?     @map("last_error")
+  deliveredAt   DateTime?   @map("delivered_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  outboxEvent OutboxEvent  @relation(fields: [outboxEventId], references: [id], onDelete: Cascade)
+  channel     AlertChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  // IDEMPOTENCY: one delivery record per (event, channel).
+  @@unique([outboxEventId, channelId], name: "uq_alert_channel")
+  @@index([status])
+  @@map("alerts")
 }
