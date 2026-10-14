@@ -46,10 +46,12 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # --- Sentinel Scheduler ---
-  # Separate process that polls for due monitors and enqueues BullMQ jobs.
-  # Uses the same codebase as the API but runs a different entry point.
-  scheduler:
+  # --- Sentinel Schedulers (Phase 10: active/standby leader election) ---
+  # Two scheduler instances run simultaneously. Only the leader (the one
+  # holding the Redis lease) actually enqueues BullMQ jobs. The standby
+  # monitors the lease and takes over within ~TTL+renew (~20s) if the leader
+  # crashes, or within ~1 renew interval (~5s) after a graceful shutdown.
+  scheduler-a:
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -58,6 +60,23 @@ services:
     environment:
       REDIS_URL: redis://redis:6379
       LOG_FORMAT: json
+      SCHEDULER_ID: scheduler-a
+    command: ["node", "-r", "dotenv/config", "src/scheduler/index.js"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  scheduler-b:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+      LOG_FORMAT: json
+      SCHEDULER_ID: scheduler-b
     command: ["node", "-r", "dotenv/config", "src/scheduler/index.js"]
     depends_on:
       redis:
@@ -120,6 +139,26 @@ services:
       WORKER_REGION: frankfurt
       WORKER_CONCURRENCY: 5
     command: ["node", "-r", "dotenv/config", "src/worker/index.js"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Alert Dispatcher (Phase 9) ---
+  # Polls outbox_events and delivers alerts via email (Resend) and webhooks.
+  # Separate from the result processor to isolate external I/O from the
+  # incident state machine. Multiple instances can run safely (SKIP LOCKED).
+  alert-dispatcher:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+      LOG_FORMAT: json
+      WORKER_ID: alert-dispatcher-1
+    command: ["node", "-r", "dotenv/config", "src/alert-dispatcher/index.js"]
     depends_on:
       redis:
         condition: service_healthy
