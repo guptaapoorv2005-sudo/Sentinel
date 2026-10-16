@@ -13,6 +13,9 @@ import { testRedisConnection } from './config/redis.js';
 import authRoutes from './routes/auth.routes.js';
 import monitorRoutes from './routes/monitor.routes.js';
 import workerRoutes from './routes/worker.routes.js';
+import { incidentRouter, monitorIncidentRouter } from './routes/incident.routes.js';
+import { alertChannelRouter } from './routes/alertChannel.routes.js';
+import { alertRouter } from './routes/alert.routes.js';
 
 const logger = createLogger('api');
 
@@ -85,6 +88,10 @@ app.get('/api/v1/ready', async (req, res) => {
 // --- Mount routes ---
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/monitors', monitorRoutes);
+app.use('/api/v1/monitors/:monitorId/incidents', monitorIncidentRouter);
+app.use('/api/v1/monitors/:monitorId/alert-channels', alertChannelRouter);
+app.use('/api/v1/incidents', incidentRouter);
+app.use('/api/v1/incidents/:incidentId', alertRouter);
 app.use('/api/v1/workers', workerRoutes);
 
 app.use((req, _res, next) => {
