@@ -45,6 +45,7 @@ function loadEnvironment() {
     // Scheduler config
     schedulerPollIntervalMs: parseInt(process.env.SCHEDULER_POLL_INTERVAL_MS, 10) || 15000,
     checkQueueName: process.env.CHECK_QUEUE_NAME || 'sentinel.checks',
+    resultQueueName: process.env.RESULT_QUEUE_NAME || 'sentinel.results',
 
     // Worker identity config
     // WORKER_ID: Unique identity for this worker instance. Defaults to a UUID
@@ -70,6 +71,50 @@ function loadEnvironment() {
     // MAX_STALLED_COUNT: How many times a job can be stalled before it's moved
     // to failed. Default 2 (allows one retry after stall detection).
     maxStalledCount: parseInt(process.env.MAX_STALLED_COUNT, 10) || 2,
+
+    // Incident detection thresholds (Phase 7)
+    // INCIDENT_DETECTION_THRESHOLD: Consecutive global-DOWN slots required to open an incident.
+    // Default 3. Phase 8+ creates incidents directly as CONFIRMED (quorum already applied).
+    // Recovery: consecutiveFailures drops to 0 after a global UP slot.
+    incidentDetectionThreshold: parseInt(process.env.INCIDENT_DETECTION_THRESHOLD, 10) || 3,
+
+    // Quorum configuration (Phase 8)
+    // QUORUM_REGIONS: comma-separated list of logical region names that workers run in.
+    // Default 'default' = single-region mode, backward-compatible with Phase 7.
+    quorumRegions: (process.env.QUORUM_REGIONS || 'default').split(',').map((s) => s.trim()),
+    // QUORUM_MIN_REGIONS: number of agreeing regions required to classify a slot as UP or DOWN.
+    // Default 1 = single-region mode (any one region is decisive).
+    quorumMinRegions: parseInt(process.env.QUORUM_MIN_REGIONS, 10) || 1,
+    // QUORUM_CORRELATION_WINDOW_MS: how long to wait for late regional results before
+    // evaluating a slot with whatever data has arrived. Default 60 seconds.
+    quorumCorrelationWindowMs: parseInt(process.env.QUORUM_CORRELATION_WINDOW_MS, 10) || 60000,
+
+    // Alert dispatcher configuration (Phase 9)
+    // ALERT_DISPATCHER_POLL_MS: how often the dispatcher polls outbox_events for pending work.
+    alertDispatcherPollMs: parseInt(process.env.ALERT_DISPATCHER_POLL_MS, 10) || 5000,
+    // ALERT_MAX_RETRIES: max delivery attempts per Alert before it is marked FAILED.
+    alertMaxRetries: parseInt(process.env.ALERT_MAX_RETRIES, 10) || 5,
+
+    // Resend email configuration (Phase 9 — email channel)
+    // RESEND_API_KEY: API key from resend.com. Leave empty to disable email alerts.
+    resendApiKey: process.env.RESEND_API_KEY || '',
+    // RESEND_FROM: sender address shown in delivered emails.
+    resendFrom: process.env.RESEND_FROM || 'Sentinel <alerts@sentinel.dev>',
+
+    // Webhook configuration (Phase 9)
+    // WEBHOOK_TIMEOUT_MS: abort a webhook POST after this many milliseconds.
+    webhookTimeoutMs: parseInt(process.env.WEBHOOK_TIMEOUT_MS, 10) || 10000,
+
+    // Scheduler leader election (Phase 10)
+    // SCHEDULER_LEASE_TTL_MS: Redis key TTL for the leader lease. Upper bound on
+    // failover time after a crash. Default 15s.
+    schedulerLeaseTtlMs: parseInt(process.env.SCHEDULER_LEASE_TTL_MS, 10) || 15000,
+    // SCHEDULER_LEASE_RENEW_MS: How often the leader renews the lease, and how
+    // often a standby retries acquisition. Default 5s (renews 3× per TTL).
+    schedulerLeaseRenewMs: parseInt(process.env.SCHEDULER_LEASE_RENEW_MS, 10) || 5000,
+    // SCHEDULER_LEASE_SAFETY_MS: The local deadline fires this many ms before
+    // the Redis TTL, ensuring the leader stops before the new one can start.
+    schedulerLeaseSafetyMs: parseInt(process.env.SCHEDULER_LEASE_SAFETY_MS, 10) || 2000,
   };
 }
 
