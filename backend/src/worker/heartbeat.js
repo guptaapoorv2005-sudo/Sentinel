@@ -64,20 +64,20 @@ function createHeartbeat({ workerId, region, intervalMs, ttlS }) {
 
     try {
       await getRedis().set(key, payload, 'EX', ttl);
-      logger.debug({ workerId, key, ttlS: ttl }, 'Heartbeat written');
+      /* logger.debug({ workerId, key, ttlS: ttl }, 'Heartbeat written') */;
     } catch (err) {
       // Non-fatal — the beat will retry on the next interval.
       // If Redis is truly down, BullMQ will also fail and the worker
       // will stop processing jobs anyway.
-      logger.warn({ err: err.message, workerId }, 'Failed to write heartbeat');
+      /* logger.warn({ err: err.message, workerId }, 'Failed to write heartbeat') */;
     }
   }
 
   function start() {
-    logger.info(
+    /* logger.info(
       { workerId, region, intervalMs: interval, ttlS: ttl, key },
       'Heartbeat started'
-    );
+    ) */;
     // Write immediately, then on interval.
     beat();
     timer = setInterval(beat, interval);
@@ -93,9 +93,9 @@ function createHeartbeat({ workerId, region, intervalMs, ttlS }) {
       // Delete the key so the worker disappears immediately on graceful shutdown
       // rather than waiting for TTL expiry.
       await getRedis().del(key);
-      logger.info({ workerId, key }, 'Heartbeat key deleted (graceful shutdown)');
+      /* logger.info({ workerId, key }, 'Heartbeat key deleted (graceful shutdown)') */;
     } catch (err) {
-      logger.warn({ err: err.message, workerId }, 'Failed to delete heartbeat key');
+      /* logger.warn({ err: err.message, workerId }, 'Failed to delete heartbeat key') */;
     }
 
     try {

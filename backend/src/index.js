@@ -6,7 +6,7 @@ import { createLogger } from './utils/logger.js';
 const logger = createLogger('server');
 
 const server = app.listen(config.port, () => {
-  logger.info({ port: config.port, env: config.nodeEnv }, 'Sentinel API started');
+  /* logger.info({ port: config.port, env: config.nodeEnv }, 'Sentinel API started') */;
 });
 
 // WHY GRACEFUL SHUTDOWN MATTERS:
@@ -26,16 +26,16 @@ async function shutdown(signal) {
   if (isShuttingDown) return;  // Prevent double shutdown
   isShuttingDown = true;
 
-  logger.info({ signal }, 'Shutdown signal received. Closing gracefully...');
+  /* logger.info({ signal }, 'Shutdown signal received. Closing gracefully...') */;
 
   // 1. Stop accepting new connections
   server.close(async () => {
-    logger.info('HTTP server closed');
+    /* logger.info('HTTP server closed') */;
 
     try {
       // 2. Close database connection pool
       await prisma.$disconnect();
-      logger.info('Database connection closed');
+      /* logger.info('Database connection closed') */;
     } catch (err) {
       logger.error({ err: err.message }, 'Error closing database connection');
     }
@@ -43,12 +43,12 @@ async function shutdown(signal) {
     try {
       // 3. Close Redis connection
       await redis.quit();
-      logger.info('Redis connection closed');
+      /* logger.info('Redis connection closed') */;
     } catch (err) {
       logger.error({ err: err.message }, 'Error closing Redis connection');
     }
 
-    logger.info('Graceful shutdown complete');
+    /* logger.info('Graceful shutdown complete') */;
     process.exit(0);
   });
 

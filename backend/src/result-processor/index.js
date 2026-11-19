@@ -33,7 +33,7 @@ const logger = createLogger('result-processor');
 const processorId = `result-processor-${config.workerId}`;
 const region = config.workerRegion;
 
-logger.info(
+/* logger.info(
   {
     queueName: config.resultQueueName,
     processorId,
@@ -41,7 +41,7 @@ logger.info(
     stalledIntervalMs: config.stalledIntervalMs,
   },
   'Result processor starting'
-);
+) */;
 
 const worker = new Worker(
   config.resultQueueName,
@@ -55,7 +55,7 @@ const worker = new Worker(
 );
 
 worker.on('completed', (job, result) => {
-  logger.info(
+  /* logger.info(
     {
       jobId: job.id,
       monitorId: result.monitorId,
@@ -64,7 +64,7 @@ worker.on('completed', (job, result) => {
       stateUpdated: result.stateUpdated,
     },
     'Result job completed'
-  );
+  ) */;
 });
 
 worker.on('failed', (job, err) => {
@@ -84,7 +84,7 @@ worker.on('error', (err) => {
 });
 
 worker.on('stalled', (jobId) => {
-  logger.warn({ jobId, processorId }, 'Result job stalled — will be retried');
+  /* logger.warn({ jobId, processorId }, 'Result job stalled — will be retried') */;
 });
 
 // Heartbeat so the system knows this process is alive.
@@ -95,11 +95,11 @@ const heartbeat = createHeartbeat({
 heartbeat.start();
 
 async function shutdown(signal) {
-  logger.info({ signal }, 'Result processor shutting down...');
+  /* logger.info({ signal }, 'Result processor shutting down...') */;
 
   try {
     await worker.close();
-    logger.info('Result processor worker closed');
+    /* logger.info('Result processor worker closed') */;
   } catch (err) {
     logger.error({ err: err.message }, 'Error closing result processor worker');
   }
@@ -112,12 +112,12 @@ async function shutdown(signal) {
 
   try {
     await prisma.$disconnect();
-    logger.info('Database connection closed');
+    /* logger.info('Database connection closed') */;
   } catch (err) {
     logger.error({ err: err.message }, 'Error closing database connection');
   }
 
-  logger.info('Result processor shutdown complete');
+  /* logger.info('Result processor shutdown complete') */;
   process.exit(0);
 }
 
@@ -134,4 +134,4 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-logger.info('Result processor ready — consuming from result queue');
+/* logger.info('Result processor ready — consuming from result queue') */;

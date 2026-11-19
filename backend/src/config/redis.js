@@ -34,13 +34,13 @@ const redis = new Redis(config.redisUrl, {
   retryStrategy(times) {
     // Exponential backoff: 50ms, 100ms, 200ms... capped at 2 seconds
     const delay = Math.min(times * 50, 2000);
-    logger.warn({ attempt: times, nextRetryMs: delay }, 'Redis connection retry');
+    /* logger.warn({ attempt: times, nextRetryMs: delay }, 'Redis connection retry') */;
     return delay;
   },
 });
 
 redis.on('connect', () => {
-  logger.info('Redis connected');
+  /* logger.info('Redis connected') */;
 });
 
 redis.on('error', (err) => {
@@ -50,7 +50,7 @@ redis.on('error', (err) => {
 });
 
 redis.on('close', () => {
-  logger.warn('Redis connection closed');
+  /* logger.warn('Redis connection closed') */;
 });
 
 // Test the Redis connection by sending a PING command.

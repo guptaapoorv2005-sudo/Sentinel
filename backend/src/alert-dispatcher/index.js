@@ -29,7 +29,7 @@ const logger = createLogger('alert-dispatcher');
 
 const dispatcherId = `alert-dispatcher-${config.workerId}`;
 
-logger.info({ dispatcherId }, 'Alert dispatcher starting');
+/* logger.info({ dispatcherId }, 'Alert dispatcher starting') */;
 
 // Heartbeat so the worker dashboard knows this process is alive.
 const heartbeat = createHeartbeat({
@@ -42,7 +42,7 @@ heartbeat.start();
 await start();
 
 async function shutdown(signal) {
-  logger.info({ signal }, 'Alert dispatcher shutting down...');
+  /* logger.info({ signal }, 'Alert dispatcher shutting down...') */;
 
   try {
     await stop();
@@ -58,12 +58,12 @@ async function shutdown(signal) {
 
   try {
     await prisma.$disconnect();
-    logger.info('Database connection closed');
+    /* logger.info('Database connection closed') */;
   } catch (err) {
     logger.error({ err: err.message }, 'Error closing database connection');
   }
 
-  logger.info('Alert dispatcher shutdown complete');
+  /* logger.info('Alert dispatcher shutdown complete') */;
   process.exit(0);
 }
 
@@ -80,4 +80,4 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-logger.info('Alert dispatcher ready');
+/* logger.info('Alert dispatcher ready') */;

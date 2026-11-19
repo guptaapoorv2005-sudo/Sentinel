@@ -126,7 +126,7 @@ const googleLogin = asyncHandler(async (req, res, next) => {
       audience: config.googleClientId,
     });
   } catch (error) {
-    logger.warn({ error: error.message }, 'Google token verification failed');
+    /* logger.warn({ error: error.message }, 'Google token verification failed') */;
     return next(new ApiError(401, 'Invalid Google token'));
   }
 
@@ -144,7 +144,7 @@ const googleLogin = asyncHandler(async (req, res, next) => {
         authProvider: 'GOOGLE',
       }
     });
-    logger.info({ userId: user.id, email }, 'User registered via Google');
+    /* logger.info({ userId: user.id, email }, 'User registered via Google') */;
   } else {
     if (!user.googleId) {
       user = await prisma.user.update({
@@ -164,7 +164,7 @@ const googleLogin = asyncHandler(async (req, res, next) => {
 
   setAuthCookies(res, accessToken, refreshToken);
 
-  logger.info({ userId: user.id }, 'User logged in via Google');
+  /* logger.info({ userId: user.id }, 'User logged in via Google') */;
 
   res.status(200).json(new ApiResponse(200, {
     user: { id: user.id, email: user.email, createdAt: user.createdAt },

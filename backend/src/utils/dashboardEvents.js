@@ -5,5 +5,5 @@ const logger = createLogger('dashboard-events');
 export function notifyDashboard(userId, monitorId) {
   if (redis.status !== 'ready') return;
   redis.publish('sentinel:dashboard', JSON.stringify({ userId, monitorId }))
-    .catch(err => logger.warn({ err: err.message }, 'Dashboard notification failed'));
+    .catch(err => void 0 /* logger.warn({ err: err.message }, 'Dashboard notification failed') */);
 }

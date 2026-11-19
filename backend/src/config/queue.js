@@ -77,7 +77,7 @@ function getCheckQueue(region) {
     });
 
     checkQueueCache.set(region, queue);
-    logger.debug({ region, queueName }, 'Check queue created');
+    /* logger.debug({ region, queueName }, 'Check queue created') */;
   }
   return checkQueueCache.get(region);
 }

@@ -216,7 +216,7 @@ async function evaluateIncident(tx, monitorId, globalStatus, consecutiveFailures
       } catch (err) {
         // Unique constraint: another concurrent transaction already created it.
         if (err.code === 'P2002' || (err.message && err.message.includes('uq_monitor_open_incident'))) {
-          logger.warn({ monitorId, consecutiveFailures }, 'Concurrent incident creation — already exists');
+          /* logger.warn({ monitorId, consecutiveFailures }, 'Concurrent incident creation — already exists') */;
           return { action: 'noop' };
         }
         throw err;
@@ -249,10 +249,10 @@ async function evaluateIncident(tx, monitorId, globalStatus, consecutiveFailures
         },
       });
 
-      logger.info(
+      /* logger.info(
         { monitorId, incidentId: incident.id, consecutiveFailures },
         'Incident CONFIRMED (quorum threshold reached)'
-      );
+      ) */;
 
       return { action: 'created', incidentId: incident.id };
     }
@@ -301,10 +301,10 @@ async function evaluateIncident(tx, monitorId, globalStatus, consecutiveFailures
       },
     });
 
-    logger.info(
+    /* logger.info(
       { monitorId, incidentId: openIncident.id, prevStatus },
       'Incident RESOLVED after recovery'
-    );
+    ) */;
 
     return { action: 'resolved', incidentId: openIncident.id };
   }
@@ -340,7 +340,7 @@ async function finalizeSlot(monitorId, slot, globalStatus, counts, now) {
     } catch (err) {
       // P2002 = unique constraint violation — slot already finalized.
       if (err.code === 'P2002') {
-        logger.debug({ monitorId, executionSlot: String(slot) }, 'Slot already finalized — skipping');
+        /* logger.debug({ monitorId, executionSlot: String(slot) }, 'Slot already finalized — skipping') */;
         return { action: 'already_finalized' };
       }
       throw err;
@@ -353,7 +353,7 @@ async function finalizeSlot(monitorId, slot, globalStatus, counts, now) {
     });
 
     if (!monitor) {
-      logger.warn({ monitorId }, 'Monitor not found — skipping state update');
+      /* logger.warn({ monitorId }, 'Monitor not found — skipping state update') */;
       return { action: 'noop' };
     }
 
@@ -400,7 +400,7 @@ async function finalizeSlot(monitorId, slot, globalStatus, counts, now) {
       );
     }
 
-    logger.info(
+    /* logger.info(
       {
         monitorId,
         executionSlot: String(slot),
@@ -413,7 +413,7 @@ async function finalizeSlot(monitorId, slot, globalStatus, counts, now) {
         incidentAction: incidentOutcome.action,
       },
       'Slot finalized'
-    );
+    ) */;
 
     return {
       monitorId,
@@ -480,10 +480,10 @@ async function processResult(job) {
   const checkedAtDate = new Date(checkedAt);
   const now          = Date.now();
 
-  logger.debug(
+  /* logger.debug(
     { jobId: job.id, monitorId, executionSlot, workerId, region, status },
     'Processing result'
-  );
+  ) */;
 
   // ── Stage A: Persist the regional CheckResult ─────────────────────────────
   await prisma.checkResult.upsert({
@@ -521,7 +521,7 @@ async function processResult(job) {
   if (quorum.decided) {
     await finalizeSlot(monitorId, slot, quorum.globalStatus, quorum, now);
   } else {
-    logger.debug(
+    /* logger.debug(
       {
         monitorId,
         executionSlot,
@@ -531,7 +531,7 @@ async function processResult(job) {
         regionsMissing: quorum.regionsMissing,
       },
       'Slot undecided — waiting for more regional results'
-    );
+    ) */;
   }
 
   // ── Stage C: Sweep expired unevaluated slots for this monitor ─────────────
@@ -539,7 +539,7 @@ async function processResult(job) {
   try {
     const owner = await prisma.monitor.findUnique({ where: { id: monitorId }, select: { userId: true } });
     if (owner) notifyDashboard(owner.userId, monitorId);
-  } catch (err) { logger.warn({ err: err.message }, 'Dashboard notification failed'); }
+  } catch (err) { /* logger.warn({ err: err.message }, 'Dashboard notification failed') */; }
   return { monitorId, executionSlot, status, stateUpdated: quorum.decided };
 }
 

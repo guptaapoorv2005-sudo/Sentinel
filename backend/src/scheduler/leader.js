@@ -99,7 +99,7 @@ function createLeaderElector({
 
   if (!redisClient) {
     redis.on('error', (err) => {
-      logger.warn({ err: err.message }, 'Leader elector Redis error');
+      /* logger.warn({ err: err.message }, 'Leader elector Redis error') */;
     });
   }
 
@@ -133,7 +133,7 @@ function createLeaderElector({
     updateLocalDeadline();
     await writeInfo();
 
-    logger.info({ instanceId, epoch, keyPrefix }, 'Became leader');
+    /* logger.info({ instanceId, epoch, keyPrefix }, 'Became leader') */;
     return true;
   }
 
@@ -144,7 +144,7 @@ function createLeaderElector({
     if (result === 1) {
       updateLocalDeadline();
       await writeInfo();
-      logger.debug({ instanceId, epoch, leaseValidUntil }, 'Lease renewed');
+      /* logger.debug({ instanceId, epoch, leaseValidUntil }, 'Lease renewed') */;
       return true;
     }
     return false;
@@ -159,9 +159,9 @@ function createLeaderElector({
     if (state === 'LEADER') {
       // First check the local deadline — handles Redis-unreachable scenario.
       if (performance.now() >= leaseValidUntil) {
-        logger.warn({ instanceId, epoch }, 'Local lease deadline passed — stepping down');
+        /* logger.warn({ instanceId, epoch }, 'Local lease deadline passed — stepping down') */;
         state = 'STANDBY';
-        logger.info({ instanceId }, 'Lost leadership (local deadline)');
+        /* logger.info({ instanceId }, 'Lost leadership (local deadline)') */;
         return;
       }
 
@@ -169,10 +169,10 @@ function createLeaderElector({
         const renewed = await tryRenew();
         if (!renewed) {
           state = 'STANDBY';
-          logger.info({ instanceId, epoch }, 'Lost leadership (lease stolen or expired)');
+          /* logger.info({ instanceId, epoch }, 'Lost leadership (lease stolen or expired)') */;
         }
       } catch (err) {
-        logger.warn({ err: err.message, instanceId }, 'Renew threw — checking local deadline');
+        /* logger.warn({ err: err.message, instanceId }, 'Renew threw — checking local deadline') */;
         // Don't step down immediately on a transient error; the local deadline
         // will force a step-down if renewals keep failing.
       }
@@ -181,7 +181,7 @@ function createLeaderElector({
       try {
         await tryAcquire();
       } catch (err) {
-        logger.debug({ err: err.message, instanceId }, 'Acquire attempt failed');
+        /* logger.debug({ err: err.message, instanceId }, 'Acquire attempt failed') */;
       }
     }
   }
@@ -192,11 +192,11 @@ function createLeaderElector({
    * Start the elector. Immediately tries to acquire, then polls on interval.
    */
   async function start() {
-    logger.info({ instanceId, keyPrefix, ttlMs, renewIntervalMs }, 'Leader elector starting');
+    /* logger.info({ instanceId, keyPrefix, ttlMs, renewIntervalMs }, 'Leader elector starting') */;
     try {
       await tryAcquire();
     } catch (err) {
-      logger.debug({ err: err.message }, 'Initial acquire attempt failed');
+      /* logger.debug({ err: err.message }, 'Initial acquire attempt failed') */;
     }
     timer = setInterval(() => {
       poll().catch((err) => {
@@ -233,7 +233,7 @@ function createLeaderElector({
     }
 
     if (state !== 'LEADER') {
-      logger.info({ instanceId }, 'Elector stopped (was standby)');
+      /* logger.info({ instanceId }, 'Elector stopped (was standby)') */;
       return;
     }
 
@@ -242,9 +242,9 @@ function createLeaderElector({
       if (result === 1) {
         // Also clean up the info key so getLeaderInfo() returns null immediately.
         await redis.del(infoKey).catch(() => {});
-        logger.info({ instanceId, epoch }, 'Released leadership (graceful shutdown)');
+        /* logger.info({ instanceId, epoch }, 'Released leadership (graceful shutdown)') */;
       } else {
-        logger.warn({ instanceId, epoch }, 'Release returned 0 — lease was already taken by another instance');
+        /* logger.warn({ instanceId, epoch }, 'Release returned 0 — lease was already taken by another instance') */;
       }
     } catch (err) {
       logger.error({ err: err.message, instanceId }, 'Failed to release lease');

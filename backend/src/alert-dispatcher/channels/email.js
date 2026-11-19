@@ -130,11 +130,11 @@ async function sendEmail(channelConfig, eventType, payload) {
   });
 
   if (error) {
-    logger.warn({ to, eventType, error }, 'Resend API returned an error');
+    /* logger.warn({ to, eventType, error }, 'Resend API returned an error') */;
     throw new Error(`Resend error: ${error.message || JSON.stringify(error)}`);
   }
 
-  logger.info({ to, eventType, messageId: data?.id }, 'Email delivered via Resend');
+  /* logger.info({ to, eventType, messageId: data?.id }, 'Email delivered via Resend') */;
 }
 
 export { sendEmail };

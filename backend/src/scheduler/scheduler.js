@@ -142,7 +142,7 @@ async function scheduleMonitors({
   });
 
   if (monitors.length === 0) {
-    logger.debug('No enabled monitors found');
+    /* logger.debug('No enabled monitors found') */;
     return { total: 0, enqueued: 0, skipped: 0, aborted: false };
   }
 
@@ -156,7 +156,7 @@ async function scheduleMonitors({
   for (const monitor of monitors) {
     // Mid-tick abort: stop if we lost leadership during a large batch.
     if (!shouldContinue()) {
-      logger.warn({ processed: enqueued + skipped, remaining: monitors.length }, 'Mid-tick abort: lost leadership');
+      /* logger.warn({ processed: enqueued + skipped, remaining: monitors.length }, 'Mid-tick abort: lost leadership') */;
       aborted = true;
       break;
     }

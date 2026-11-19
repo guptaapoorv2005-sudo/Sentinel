@@ -52,16 +52,16 @@ function createJobHandler(workerId, region) {
   return async function processJob(job) {
     const { monitorId, url, method, expectedStatus, timeout, executionSlot } = job.data;
 
-    logger.debug(
+    /* logger.debug(
       { jobId: job.id, monitorId, url, workerId, region },
       'Processing check job'
-    );
+    ) */;
 
     // --- Step 1: Execute the HTTP check ---
     // executeCheck() never throws — it always returns a normalized result.
     const checkResult = await executeCheck({ url, method, timeout, expectedStatus });
 
-    logger.info(
+    /* logger.info(
       {
         jobId: job.id,
         monitorId,
@@ -74,7 +74,7 @@ function createJobHandler(workerId, region) {
         failureType: checkResult.failureType,
       },
       'Check complete'
-    );
+    ) */;
 
     // --- Step 2: Publish result to the result queue ---
     // The result processor owns all persistence and state decisions.
@@ -98,7 +98,7 @@ function createJobHandler(workerId, region) {
       { jobId: resultJobId }
     );
 
-    logger.debug({ jobId: job.id, monitorId, resultJobId, workerId, region }, 'Result enqueued');
+    /* logger.debug({ jobId: job.id, monitorId, resultJobId, workerId, region }, 'Result enqueued') */;
 
     return {
       status: checkResult.status,
@@ -119,10 +119,10 @@ function createWorker(overrides = {}) {
   // Phase 8: consume from the region-specific check queue.
   const queueName = `${config.checkQueueName}.${region}`;
 
-  logger.info(
+  /* logger.info(
     { workerId, region, queueName, concurrency },
     'Creating worker'
-  );
+  ) */;
 
   const worker = new Worker(
     queueName,
@@ -136,7 +136,7 @@ function createWorker(overrides = {}) {
   );
 
   worker.on('completed', (job, result) => {
-    logger.info(
+    /* logger.info(
       {
         jobId: job.id,
         monitorId: job.data.monitorId,
@@ -145,7 +145,7 @@ function createWorker(overrides = {}) {
         region: result.region,
       },
       'Job completed'
-    );
+    ) */;
   });
 
   worker.on('failed', (job, err) => {
@@ -167,10 +167,10 @@ function createWorker(overrides = {}) {
   });
 
   worker.on('stalled', (jobId) => {
-    logger.warn(
+    /* logger.warn(
       { jobId, workerId, region },
       'Job stalled — will be retried by another worker'
-    );
+    ) */;
   });
 
   return worker;

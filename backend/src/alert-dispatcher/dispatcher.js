@@ -91,10 +91,10 @@ async function deliverToChannel(outboxEventId, channel, eventType, payload) {
 
   // Already delivered — skip external call.
   if (alert.status === 'DELIVERED') {
-    logger.debug(
+    /* logger.debug(
       { outboxEventId, channelId: channel.id, channelType: channel.type },
       'Alert already delivered — skipping'
-    );
+    ) */;
     return 'delivered';
   }
 
@@ -137,10 +137,10 @@ async function deliverToChannel(outboxEventId, channel, eventType, payload) {
       },
     });
 
-    logger.info(
+    /* logger.info(
       { outboxEventId, channelId: channel.id, channelType: channel.type },
       'Alert delivered'
-    );
+    ) */;
     return 'delivered';
   } catch (err) {
     const newAttempts = alert.attempts + 1;
@@ -155,13 +155,13 @@ async function deliverToChannel(outboxEventId, channel, eventType, payload) {
       },
     });
 
-    logger.warn(
+    /* logger.warn(
       {
         outboxEventId, channelId: channel.id, channelType: channel.type,
         attempt: newAttempts, maxRetries: MAX_RETRIES, err: err.message
       },
       exhausted ? 'Alert permanently failed' : 'Alert delivery failed — will retry'
-    );
+    ) */;
     return exhausted ? 'failed' : 'retrying';
   }
 }
@@ -172,7 +172,7 @@ async function processOutboxEvent(event) {
   const { id: outboxEventId, type: eventType, payload } = event;
   const monitorId = payload.monitorId;
 
-  logger.debug({ outboxEventId, eventType, monitorId }, 'Processing outbox event');
+  /* logger.debug({ outboxEventId, eventType, monitorId }, 'Processing outbox event') */;
 
   // Fetch enabled channels for this monitor.
   const channels = await prisma.alertChannel.findMany({
@@ -185,7 +185,7 @@ async function processOutboxEvent(event) {
       where: { id: outboxEventId },
       data: { status: 'DELIVERED', processedAt: new Date() },
     });
-    logger.debug({ outboxEventId, monitorId }, 'No channels configured — event vacuously delivered');
+    /* logger.debug({ outboxEventId, monitorId }, 'No channels configured — event vacuously delivered') */;
     return;
   }
 
@@ -206,7 +206,7 @@ async function processOutboxEvent(event) {
       where: { id: outboxEventId },
       data: { status: 'DELIVERED', processedAt: new Date(), attempts: event.attempts + 1 },
     });
-    logger.info({ outboxEventId, eventType, monitorId }, 'Outbox event fully delivered');
+    /* logger.info({ outboxEventId, eventType, monitorId }, 'Outbox event fully delivered') */;
   } else if (allFailed) {
     await prisma.outboxEvent.update({
       where: { id: outboxEventId },
@@ -228,7 +228,7 @@ async function processOutboxEvent(event) {
         nextRetryAt,
       },
     });
-    logger.debug({ outboxEventId, nextRetryAt }, 'Outbox event scheduled for retry');
+    /* logger.debug({ outboxEventId, nextRetryAt }, 'Outbox event scheduled for retry') */;
   }
 }
 
@@ -257,7 +257,7 @@ async function pollOutbox() {
 
   if (events.length === 0) return;
 
-  logger.debug({ count: events.length }, 'Outbox poll: events claimed');
+  /* logger.debug({ count: events.length }, 'Outbox poll: events claimed') */;
 
   // Process events sequentially to avoid overwhelming external providers.
   // If we need higher throughput, this can become concurrent with a semaphore.
@@ -290,7 +290,7 @@ let pollTimer = null;
 async function start() {
   if (running) return;
   running = true;
-  logger.info({ pollIntervalMs: POLL_INTERVAL_MS, maxRetries: MAX_RETRIES }, 'Alert dispatcher started');
+  /* logger.info({ pollIntervalMs: POLL_INTERVAL_MS, maxRetries: MAX_RETRIES }, 'Alert dispatcher started') */;
 
   async function tick() {
     if (!running) return;
@@ -315,7 +315,7 @@ async function stop() {
     clearTimeout(pollTimer);
     pollTimer = null;
   }
-  logger.info('Alert dispatcher stopped');
+  /* logger.info('Alert dispatcher stopped') */;
 }
 
 export { start, stop, pollOutbox };

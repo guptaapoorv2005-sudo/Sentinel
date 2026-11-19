@@ -20,7 +20,8 @@ import { config } from '../config/environment.js';
 
 // Base logger configuration
 const loggerOptions = {
-  level: config.nodeEnv === 'production' ? 'info' : 'debug',
+  // Only emit error and fatal records.
+  level: 'error',
 
   // In development, use pino-pretty for human-readable output.
   // In production, use raw JSON for log aggregation tools.

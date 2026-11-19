@@ -80,7 +80,7 @@ let isFirstLeaderTick = false;  // used for backfill on takeover
 
 async function tick() {
   if (!elector.isLeader()) {
-    logger.debug({ instanceId }, 'Standby — skipping tick');
+    /* logger.debug({ instanceId }, 'Standby — skipping tick') */;
     return;
   }
 
@@ -88,7 +88,7 @@ async function tick() {
   const backfill = isFirstLeaderTick;
   if (isFirstLeaderTick) {
     isFirstLeaderTick = false;
-    logger.info({ instanceId, epoch: elector.getEpoch() }, 'First leader tick — backfilling previous slot');
+    /* logger.info({ instanceId, epoch: elector.getEpoch() }, 'First leader tick — backfilling previous slot') */;
   }
 
   try {
@@ -98,7 +98,7 @@ async function tick() {
     });
 
     if (stats.total > 0) {
-      logger.info(
+      /* logger.info(
         {
           total: stats.total,
           enqueued: stats.enqueued,
@@ -107,7 +107,7 @@ async function tick() {
           backfill,
         },
         'Scheduling cycle complete'
-      );
+      ) */;
     }
   } catch (err) {
     // Don't crash the scheduler on a single failed cycle.
@@ -122,7 +122,7 @@ let wasLeader = false;
 async function start() {
   isRunning = true;
 
-  logger.info(
+  /* logger.info(
     {
       instanceId,
       pollIntervalMs: config.schedulerPollIntervalMs,
@@ -130,7 +130,7 @@ async function start() {
       leaseRenewMs:   config.schedulerLeaseRenewMs,
     },
     'Scheduler starting'
-  );
+  ) */;
 
   // Start heartbeat (visible to /workers endpoint).
   heartbeat.start();
@@ -161,7 +161,7 @@ async function tickWithLeaderCheck() {
   } else if (!nowLeader && wasLeader) {
     wasLeader = false;
     isFirstLeaderTick = false;
-    logger.info({ instanceId }, 'Transitioned to standby');
+    /* logger.info({ instanceId }, 'Transitioned to standby') */;
   }
 
   await tick();
@@ -173,7 +173,7 @@ async function shutdown(signal) {
   if (!isRunning) return;
   isRunning = false;
 
-  logger.info({ signal, instanceId }, 'Scheduler shutting down...');
+  /* logger.info({ signal, instanceId }, 'Scheduler shutting down...') */;
 
   // 1. Stop the poll loop.
   if (pollTimer) {
@@ -213,17 +213,17 @@ async function shutdown(signal) {
     )
   );
   await Promise.all(closePromises);
-  logger.info('BullMQ queue connections closed');
+  /* logger.info('BullMQ queue connections closed') */;
 
   // 6. Disconnect DB.
   try {
     await prisma.$disconnect();
-    logger.info('Database connection closed');
+    /* logger.info('Database connection closed') */;
   } catch (err) {
     logger.error({ err: err.message }, 'Error closing database connection');
   }
 
-  logger.info({ instanceId }, 'Scheduler shutdown complete');
+  /* logger.info({ instanceId }, 'Scheduler shutdown complete') */;
   process.exit(0);
 }
 

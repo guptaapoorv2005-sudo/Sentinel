@@ -41,7 +41,7 @@ import { config } from '../config/environment.js';
 
 const logger = createLogger('worker');
 
-logger.info(
+/* logger.info(
   {
     queueName: config.checkQueueName,
     workerId: config.workerId,
@@ -53,7 +53,7 @@ logger.info(
     maxStalledCount: config.maxStalledCount,
   },
   'Worker process starting'
-);
+) */;
 
 const worker = createWorker();
 
@@ -73,30 +73,30 @@ heartbeat.start();
  *   3. Disconnect from database
  */
 async function shutdown(signal) {
-  logger.info({ signal }, 'Worker shutting down...');
+  /* logger.info({ signal }, 'Worker shutting down...') */;
 
   try {
     await worker.close();
-    logger.info('Worker closed');
+    /* logger.info('Worker closed') */;
   } catch (err) {
     logger.error({ err: err.message }, 'Error closing worker');
   }
 
   try {
     await heartbeat.stop();
-    logger.info('Heartbeat stopped');
+    /* logger.info('Heartbeat stopped') */;
   } catch (err) {
     logger.error({ err: err.message }, 'Error stopping heartbeat');
   }
 
   try {
     await prisma.$disconnect();
-    logger.info('Database connection closed');
+    /* logger.info('Database connection closed') */;
   } catch (err) {
     logger.error({ err: err.message }, 'Error closing database connection');
   }
 
-  logger.info('Worker shutdown complete');
+  /* logger.info('Worker shutdown complete') */;
   process.exit(0);
 }
 
@@ -113,4 +113,4 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-logger.info('Worker ready — consuming jobs from queue');
+/* logger.info('Worker ready — consuming jobs from queue') */;

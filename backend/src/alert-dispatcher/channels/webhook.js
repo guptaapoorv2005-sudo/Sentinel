@@ -79,7 +79,7 @@ async function sendWebhook(channelConfig, eventType, payload) {
     );
   }
 
-  logger.info({ url, eventType, status: response.status }, 'Webhook delivered');
+  /* logger.info({ url, eventType, status: response.status }, 'Webhook delivered') */;
 }
 
 export { sendWebhook };
