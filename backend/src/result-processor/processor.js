@@ -1,3 +1,4 @@
+import { notifyDashboard } from '../utils/dashboardEvents.js';
 // Result Processor — persists regional check results and drives monitor state
 // through the quorum aggregator.
 //
@@ -535,6 +536,11 @@ async function processResult(job) {
 
   // ── Stage C: Sweep expired unevaluated slots for this monitor ─────────────
   await sweepExpiredSlots(monitorId, now);
+  try {
+    const owner = await prisma.monitor.findUnique({ where: { id: monitorId }, select: { userId: true } });
+    if (owner) notifyDashboard(owner.userId, monitorId);
+  } catch (err) { logger.warn({ err: err.message }, 'Dashboard notification failed'); }
+  return { monitorId, executionSlot, status, stateUpdated: quorum.decided };
 }
 
 export { processResult };

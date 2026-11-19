@@ -44,7 +44,7 @@ const createAlertChannelSchema = z
       required_error: 'type is required',
       message: `type must be one of: ${channelTypes.join(', ')}`,
     }),
-    config: z.record(z.unknown()),
+    config: z.record(z.string(), z.unknown()),
     enabled: z.boolean().default(true),
   })
   .superRefine((data, ctx) => {
@@ -66,7 +66,7 @@ const createAlertChannelSchema = z
 // Update schema: only config and enabled may be changed; type is immutable.
 const updateAlertChannelSchema = z
   .object({
-    config: z.record(z.unknown()).optional(),
+    config: z.record(z.string(), z.unknown()).optional(),
     enabled: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
@@ -82,3 +82,4 @@ const updateAlertChannelSchema = z
   });
 
 export { createAlertChannelSchema, updateAlertChannelSchema, configSchemas };
+

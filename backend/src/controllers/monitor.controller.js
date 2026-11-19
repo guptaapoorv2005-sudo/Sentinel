@@ -1,3 +1,4 @@
+import { notifyDashboard } from '../utils/dashboardEvents.js';
 import { prisma } from '../config/database.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -16,6 +17,7 @@ const createMonitor = asyncHandler(async (req, res, next) => {
 
   // logger.info({ monitorId: monitor.id, userId: req.user.id }, 'Monitor created');
 
+  notifyDashboard(req.user.id, monitor.id);
   res.status(201).json(new ApiResponse(201, { monitor }, 'Monitor created'));
 });
 
@@ -62,6 +64,7 @@ const updateMonitor = asyncHandler(async (req, res, next) => {
 
   // logger.info({ monitorId: monitor.id }, 'Monitor updated');
 
+  notifyDashboard(req.user.id, monitor.id);
   res.status(200).json(new ApiResponse(200, { monitor }, 'Monitor updated'));
 });
 
@@ -81,6 +84,7 @@ const deleteMonitor = asyncHandler(async (req, res, next) => {
 
   // logger.info({ monitorId: existing.id }, 'Monitor deleted');
 
+  notifyDashboard(req.user.id, existing.id);
   res.status(200).json(new ApiResponse(200, null, 'Monitor deleted'));
 });
 
@@ -106,6 +110,7 @@ const toggleMonitor = asyncHandler(async (req, res, next) => {
   //   'Monitor status toggled'
   // );
 
+  notifyDashboard(req.user.id, monitor.id);
   res.status(200).json(new ApiResponse(200, { monitor }, 'Monitor status updated'));
 });
 

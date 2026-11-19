@@ -16,10 +16,12 @@ import workerRoutes from './routes/worker.routes.js';
 import { incidentRouter, monitorIncidentRouter } from './routes/incident.routes.js';
 import { alertChannelRouter } from './routes/alertChannel.routes.js';
 import { alertRouter } from './routes/alert.routes.js';
+import dashboardRouter from './routes/dashboard.routes.js';
 
 const logger = createLogger('api');
 
 const app = express();
+app.set('json replacer', (_key, value) => typeof value === 'bigint' ? value.toString() : value);
 
 app.use(helmet());
 app.use(cors({
@@ -86,6 +88,7 @@ app.get('/api/v1/ready', async (req, res) => {
 });
 
 // --- Mount routes ---
+app.use('/api/v1/dashboard', dashboardRouter);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/monitors', monitorRoutes);
 app.use('/api/v1/monitors/:monitorId/incidents', monitorIncidentRouter);

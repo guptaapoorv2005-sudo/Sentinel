@@ -1,3 +1,4 @@
+import { notifyDashboard } from '../utils/dashboardEvents.js';
 import { prisma } from '../config/database.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -123,6 +124,7 @@ const acknowledgeIncident = asyncHandler(async (req, res, next) => {
     return upd;
   });
 
+  notifyDashboard(req.user.id, incident.monitorId);
   res.status(200).json(new ApiResponse(200, { incident: updated }, 'Incident acknowledged'));
 });
 
