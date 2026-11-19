@@ -6,7 +6,7 @@
 //    deterministic timestamp derived from the current time and the monitor's
 //    interval.
 // 3. Attempt to enqueue a BullMQ job on the region's queue with a stable jobId.
-//    - jobId = `check:${monitorId}:${executionSlot}:${region}`
+//    - jobId = `check_${monitorId}_${executionSlot}_${region}`
 //    - If BullMQ already has a job with this ID, the add() call is silently
 //      ignored. No duplicate check needed.
 //
@@ -42,6 +42,17 @@
 // with the same jobId. By setting removeOnComplete.age = interval (seconds),
 // the completed job stays in Redis long enough that a duplicate enqueue
 // within the same slot is still rejected.
+//
+// BACKFILL (Phase 10):
+// When a new leader takes over after a failover gap, it runs one cycle with
+// includePreviousSlot=true. This enqueues currentSlot - interval for every
+// monitor, recovering slots that may have been missed during the gap.
+// Since jobIds are deterministic, already-enqueued slots are silently skipped.
+//
+// MID-TICK ABORT (Phase 10):
+// If a large monitor set is being processed, the scheduler can lose leadership
+// part-way through the loop. Pass a shouldContinue() callback; the loop checks
+// it every iteration and stops early if leadership was lost.
 
 import { prisma } from '../config/database.js';
 import { getCheckQueue } from '../config/queue.js';
@@ -56,14 +67,68 @@ function computeExecutionSlot(intervalSeconds, nowMs = Date.now()) {
 }
 
 /**
+ * Enqueue one (monitor, slot, region) job.
+ * Returns 'enqueued' | 'skipped' | 'error'.
+ */
+async function enqueueJob(monitor, executionSlot, region) {
+  const payload = {
+    monitorId: monitor.id,
+    url: monitor.url,
+    method: monitor.method,
+    expectedStatus: monitor.expectedStatus,
+    timeout: monitor.timeout,
+    executionSlot,
+    targetRegion: region,
+  };
+
+  const jobId = `check_${monitor.id}_${executionSlot}_${encodeURIComponent(region)}`;
+  const queue = getCheckQueue(region);
+
+  try {
+    const job = await queue.add('check', payload, {
+      jobId,
+      removeOnComplete: {
+        // Keep the completed job in Redis for at least one interval so
+        // the scheduler won't re-enqueue within the same slot.
+        age: monitor.interval,
+      },
+    });
+
+    return job ? 'enqueued' : 'skipped';
+  } catch (err) {
+    if (err.message && err.message.includes('exists')) {
+      return 'skipped';
+    }
+    logger.error(
+      { monitorId: monitor.id, region, jobId, err: err.message },
+      'Failed to enqueue check job'
+    );
+    return 'error';
+  }
+}
+
+/**
  * Run one scheduling cycle:
  * 1. Fetch all enabled monitors from the database.
- * 2. Compute their execution slot.
- * 3. For each monitor × region, attempt to enqueue a job on the region queue.
+ * 2. Compute their execution slot (and optionally the previous slot).
+ * 3. For each monitor × region × slot, attempt to enqueue a job.
+ *
+ * @param {object} opts
+ * @param {boolean}   [opts.includePreviousSlot=false]
+ *   When true (first tick after a new leader takes over), also enqueue the
+ *   slot immediately before the current one for each monitor. This recovers
+ *   jobs missed during the failover gap. Already-enqueued slots are idempotent.
+ *
+ * @param {function(): boolean} [opts.shouldContinue=() => true]
+ *   Called before each monitor to check if we still hold leadership.
+ *   The loop stops early (mid-tick abort) if this returns false.
  *
  * Returns stats about the cycle for logging.
  */
-async function scheduleMonitors() {
+async function scheduleMonitors({
+  includePreviousSlot = false,
+  shouldContinue = () => true,
+} = {}) {
   const monitors = await prisma.monitor.findMany({
     where: { enabled: true },
     select: {
@@ -78,61 +143,42 @@ async function scheduleMonitors() {
 
   if (monitors.length === 0) {
     logger.debug('No enabled monitors found');
-    return { total: 0, enqueued: 0, skipped: 0 };
+    return { total: 0, enqueued: 0, skipped: 0, aborted: false };
   }
 
   let enqueued = 0;
   let skipped = 0;
+  let aborted = false;
 
   const now = Date.now();
   const regions = config.quorumRegions;
 
   for (const monitor of monitors) {
-    const executionSlot = computeExecutionSlot(monitor.interval, now);
+    // Mid-tick abort: stop if we lost leadership during a large batch.
+    if (!shouldContinue()) {
+      logger.warn({ processed: enqueued + skipped, remaining: monitors.length }, 'Mid-tick abort: lost leadership');
+      aborted = true;
+      break;
+    }
 
-    const payload = {
-      monitorId: monitor.id,
-      url: monitor.url,
-      method: monitor.method,
-      expectedStatus: monitor.expectedStatus,
-      timeout: monitor.timeout,
-      executionSlot,
-    };
+    const currentSlot = computeExecutionSlot(monitor.interval, now);
 
-    for (const region of regions) {
-      // Stable jobId: one job per (monitor, slot, region).
-      // BullMQ deduplicates based on jobId — the same job won't be enqueued
-      // twice within the same slot, even if the scheduler restarts.
-      const jobId = `check:${monitor.id}:${executionSlot}:${region}`;
-      const queue = getCheckQueue(region);
+    // Collect all slots to enqueue for this monitor.
+    const slots = [currentSlot];
+    if (includePreviousSlot) {
+      slots.unshift(currentSlot - monitor.interval * 1000);
+    }
 
-      try {
-        const job = await queue.add('check', { ...payload, targetRegion: region }, {
-          jobId,
-          removeOnComplete: {
-            // Keep the completed job in Redis for at least one interval so
-            // the scheduler won't re-enqueue within the same slot.
-            age: monitor.interval,
-          },
-        });
-
-        if (job) {
-          enqueued++;
-        }
-      } catch (err) {
-        if (err.message && err.message.includes('exists')) {
-          skipped++;
-        } else {
-          logger.error(
-            { monitorId: monitor.id, region, jobId, err: err.message },
-            'Failed to enqueue check job'
-          );
-        }
+    for (const slot of slots) {
+      for (const region of regions) {
+        const outcome = await enqueueJob(monitor, slot, region);
+        if (outcome === 'enqueued') enqueued++;
+        else if (outcome === 'skipped') skipped++;
       }
     }
   }
 
-  return { total: monitors.length, regions: regions.length, enqueued, skipped };
+  return { total: monitors.length, regions: regions.length, enqueued, skipped, aborted };
 }
 
 export { scheduleMonitors, computeExecutionSlot };

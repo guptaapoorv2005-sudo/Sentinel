@@ -46,6 +46,30 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  result-processor:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+      LOG_FORMAT: json
+      WORKER_ID: processor-1
+    command: ["node", "-r", "dotenv/config", "src/result-processor/index.js"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # --- Sentinel Schedulers (Phase 10: active/standby leader election) ---
   # Two scheduler instances run simultaneously. Only the leader (the one
   # holding the Redis lease) actually enqueues BullMQ jobs. The standby

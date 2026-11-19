@@ -18,6 +18,9 @@ import { ApiResponse } from '../utils/ApiResponse.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
+// Redis key constants for leader election (must match leader.js defaults).
+const LEADER_KEY_PREFIX = 'scheduler:leader';
+
 const listWorkers = asyncHandler(async (req, res) => {
   // SCAN for all heartbeat keys. SCAN is O(1) per call and cursor-based,
   // so it won't block Redis even with many keys.
@@ -71,4 +74,35 @@ const getWorker = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, { ...data, ttlRemainingS: ttl }, 'Worker heartbeat'));
 });
 
-export { listWorkers, getWorker };
+/**
+ * GET /api/v1/workers/scheduler/leader
+ *
+ * Returns the current scheduler leader info from Redis, or null if there is
+ * no active leader. Reads from scheduler:leader:info (set by leader.js).
+ */
+const getSchedulerLeader = asyncHandler(async (req, res) => {
+  const infoKey  = `${LEADER_KEY_PREFIX}:info`;
+  const leaseKey = LEADER_KEY_PREFIX;
+
+  const [infoRaw, pttl] = await Promise.all([
+    redis.get(infoKey),
+    redis.pttl(leaseKey),
+  ]);
+
+  if (!infoRaw) {
+    return res.status(200).json(
+      new ApiResponse(200, { leader: null }, 'No active scheduler leader')
+    );
+  }
+
+  const info = JSON.parse(infoRaw);
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { leader: { ...info, ttlRemainingMs: pttl > 0 ? pttl : 0 } },
+      'Scheduler leader info'
+    )
+  );
+});
+
+export { listWorkers, getWorker, getSchedulerLeader };
